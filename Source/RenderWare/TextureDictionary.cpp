@@ -459,6 +459,21 @@ namespace RenderWare
         return true;
     }
 
+    bool TextureDictionary::MoveTexture(int FromIndex, int ToIndex)
+    {
+        if (FromIndex < 0 || FromIndex >= static_cast<int>(LoadedTextures.size())) return false;
+        if (ToIndex < 0 || ToIndex > static_cast<int>(LoadedTextures.size())) return false;
+        if (FromIndex == ToIndex) return true;
+
+        Texture Item = std::move(LoadedTextures[FromIndex]);
+        LoadedTextures.erase(LoadedTextures.begin() + FromIndex);
+        if (ToIndex > FromIndex)
+            ToIndex--;
+        LoadedTextures.insert(LoadedTextures.begin() + ToIndex, std::move(Item));
+        Modified = true;
+        return true;
+    }
+
     bool TextureDictionary::InsertTexture(int Index, const Texture& Item)
     {
         if (Index < 0 || Index > static_cast<int>(LoadedTextures.size()))
