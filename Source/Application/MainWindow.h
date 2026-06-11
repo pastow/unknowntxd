@@ -6,6 +6,8 @@
 #include <QSplitter>
 #include <QDragEnterEvent>
 #include <QDropEvent>
+#include <QLineEdit>
+#include <QModelIndex>
 #include <string>
 #include <vector>
 #include <utility>
@@ -45,6 +47,9 @@ private slots:
     void SetLanguageEnglish();
     void SetLanguageRussian();
 
+    void OnTextureMoved(const QModelIndex &parent, int start, int end, const QModelIndex &destination, int row);
+    void OnSearchTextChanged(const QString& text);
+
 protected:
     void wheelEvent(QWheelEvent* event) override;
     void dragEnterEvent(QDragEnterEvent* event) override;
@@ -70,6 +75,7 @@ private:
 
     std::vector<std::pair<int, RenderWare::Texture>> DeleteUndoStack;
 
+    QLineEdit* SearchBar;
     QListWidget* TextureList;
     QLabel* PreviewLabel;
     QLabel* InfoLabel;

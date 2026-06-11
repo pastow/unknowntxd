@@ -26,6 +26,7 @@ namespace RenderWare
         bool AddTexture(const std::string& Name, const Image& Source);
         bool InsertTexture(int Index, const Texture& Item);
         bool RemoveTexture(int Index);
+        bool MoveTexture(int FromIndex, int ToIndex);
 
         const std::vector<Texture>& Textures() const { return LoadedTextures; }
         bool IsLoaded() const { return Loaded; }

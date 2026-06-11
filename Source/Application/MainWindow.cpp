@@ -55,10 +55,23 @@ void MainWindow::SetupUi()
     QSplitter* splitter = new QSplitter(Qt::Horizontal, this);
     setCentralWidget(splitter);
 
+    QWidget* leftWidget = new QWidget(this);
+    QVBoxLayout* leftLayout = new QVBoxLayout(leftWidget);
+    leftLayout->setContentsMargins(0, 0, 0, 0);
+
+    SearchBar = new QLineEdit(this);
+    SearchBar->setPlaceholderText("Search...");
+    connect(SearchBar, &QLineEdit::textChanged, this, &MainWindow::OnSearchTextChanged);
+    leftLayout->addWidget(SearchBar);
+
     TextureList = new QListWidget(this);
     TextureList->setAlternatingRowColors(true);
-    splitter->addWidget(TextureList);
+    TextureList->setDragDropMode(QAbstractItemView::InternalMove);
+    connect(TextureList->model(), &QAbstractItemModel::rowsMoved, this, &MainWindow::OnTextureMoved);
     connect(TextureList, &QListWidget::currentRowChanged, this, &MainWindow::OnTextureSelected);
+    leftLayout->addWidget(TextureList);
+
+    splitter->addWidget(leftWidget);
 
     QWidget* rightWidget = new QWidget(this);
     QVBoxLayout* layout = new QVBoxLayout(rightWidget);
@@ -361,6 +374,7 @@ void MainWindow::UpdateTextureList()
         UpdatePreview();
     }
     TextureList->blockSignals(false);
+    OnSearchTextChanged(SearchBar->text());
 }
 
 void MainWindow::OnTextureSelected(int Index)
@@ -368,6 +382,32 @@ void MainWindow::OnTextureSelected(int Index)
     SelectedIndex = Index;
     PreviewZoom = 1.0f;
     UpdatePreview();
+}
+
+void MainWindow::OnSearchTextChanged(const QString& text)
+{
+    QString lowerText = text.toLower();
+    for (int i = 0; i < TextureList->count(); ++i)
+    {
+        QListWidgetItem* item = TextureList->item(i);
+        item->setHidden(!item->text().toLower().contains(lowerText));
+    }
+}
+
+void MainWindow::OnTextureMoved(const QModelIndex &, int start, int end, const QModelIndex &, int row)
+{
+    if (start == row || start == row - 1) return;
+    int toIndex = (row > start) ? row - 1 : row;
+    
+    if (Dictionary.MoveTexture(start, toIndex))
+    {
+        SelectedIndex = toIndex;
+        // Don't call UpdateTextureList() because QListWidget already moved the item!
+        // But we should update selection silently if needed.
+        TextureList->blockSignals(true);
+        TextureList->setCurrentRow(SelectedIndex);
+        TextureList->blockSignals(false);
+    }
 }
 
 void MainWindow::UpdatePreview()
@@ -517,9 +557,13 @@ void MainWindow::ApplyAddition(const std::string& ImagePath)
     if (Dictionary.AddTexture(baseName, Loaded))
     {
         SelectedIndex = Dictionary.Textures().size() - 1;
+        
+        bool hasAlpha = Dictionary.Textures()[SelectedIndex].HasAlpha();
+        Dictionary.SetTextureCompression(SelectedIndex, hasAlpha ? CompressionType::Dxt5 : CompressionType::Dxt1);
+
         UpdateTextureList();
         UpdatePreview();
-        StatusLabel->setText(QString::fromStdString("Added texture: " + baseName));
+        StatusLabel->setText(QString::fromStdString("Added texture: " + baseName + (hasAlpha ? " (DXT5)" : " (DXT1)")));
     }
 }
 
