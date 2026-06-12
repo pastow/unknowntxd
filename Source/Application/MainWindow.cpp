@@ -17,9 +17,11 @@
 #include <QFileInfo>
 #include <QPalette>
 #include <QShortcut>
+#include <QSettings>
 
 #include "RenderWare/ImageReader.h"
 #include "RenderWare/ImageWriter.h"
+#include "HotkeyDialog.h"
 
 using RenderWare::CompressionType;
 
@@ -44,6 +46,7 @@ MainWindow::MainWindow(QWidget* parent) : QMainWindow(parent)
     setAcceptDrops(true);
     SetupUi();
     SetupMenus();
+    LoadSettings();
     ApplyTheme();
 }
 
@@ -172,6 +175,9 @@ void MainWindow::SetupMenus()
     ActionTheme = MenuView->addAction("Toggle Theme");
     connect(ActionTheme, &QAction::triggered, this, &MainWindow::ToggleTheme);
 
+    ActionHotkeySettings = MenuView->addAction("Hotkey Settings");
+    connect(ActionHotkeySettings, &QAction::triggered, this, &MainWindow::RequestHotkeySettings);
+
     MenuLang = MenuView->addMenu("Language / Язык");
     
     ActionLangEn = MenuLang->addAction("English");
@@ -222,6 +228,7 @@ void MainWindow::RetranslateUi()
 
         MenuView->setTitle("View");
         ActionTheme->setText("Toggle Theme");
+        ActionHotkeySettings->setText("Hotkey Settings");
         MenuLang->setTitle("Language / Язык");
         
         if (StatusLabel->text() == "Файл не загружен")
@@ -252,6 +259,7 @@ void MainWindow::RetranslateUi()
 
         MenuView->setTitle("Вид");
         ActionTheme->setText("Сменить тему");
+        ActionHotkeySettings->setText("Настройки горячих клавиш");
         MenuLang->setTitle("Language / Язык");
         
         if (StatusLabel->text() == "No file loaded")
@@ -298,6 +306,12 @@ void MainWindow::dragEnterEvent(QDragEnterEvent* event)
 {
     if (event->mimeData()->hasUrls())
         event->acceptProposedAction();
+}
+
+void MainWindow::closeEvent(QCloseEvent* event)
+{
+    SaveSettings();
+    QMainWindow::closeEvent(event);
 }
 
 void MainWindow::dropEvent(QDropEvent* event)
@@ -742,3 +756,54 @@ void MainWindow::RequestRename()
         StatusLabel->setText("Renamed to " + Name);
     }
 }
+
+void MainWindow::LoadSettings()
+{
+    QSettings settings("UnknownTeam", "UnknownTxd");
+    CurrentLanguage = static_cast<Language>(settings.value("Language", static_cast<int>(Language::English)).toInt());
+    IsDarkTheme = settings.value("DarkTheme", true).toBool();
+    
+    if (settings.contains("Shortcut_Add")) ActionAdd->setShortcut(QKeySequence(settings.value("Shortcut_Add").toString()));
+    if (settings.contains("Shortcut_Rename")) ActionRename->setShortcut(QKeySequence(settings.value("Shortcut_Rename").toString()));
+    if (settings.contains("Shortcut_Replace")) ActionReplace->setShortcut(QKeySequence(settings.value("Shortcut_Replace").toString()));
+    if (settings.contains("Shortcut_Delete")) ActionDelete->setShortcut(QKeySequence(settings.value("Shortcut_Delete").toString()));
+    if (settings.contains("Shortcut_Export")) ActionExport->setShortcut(QKeySequence(settings.value("Shortcut_Export").toString()));
+    if (settings.contains("Shortcut_ExportAll")) ActionExportAll->setShortcut(QKeySequence(settings.value("Shortcut_ExportAll").toString()));
+    if (settings.contains("Shortcut_Resize")) ActionResize->setShortcut(QKeySequence(settings.value("Shortcut_Resize").toString()));
+    
+    RetranslateUi();
+}
+
+void MainWindow::SaveSettings()
+{
+    QSettings settings("UnknownTeam", "UnknownTxd");
+    settings.setValue("Language", static_cast<int>(CurrentLanguage));
+    settings.setValue("DarkTheme", IsDarkTheme);
+    
+    settings.setValue("Shortcut_Add", ActionAdd->shortcut().toString());
+    settings.setValue("Shortcut_Rename", ActionRename->shortcut().toString());
+    settings.setValue("Shortcut_Replace", ActionReplace->shortcut().toString());
+    settings.setValue("Shortcut_Delete", ActionDelete->shortcut().toString());
+    settings.setValue("Shortcut_Export", ActionExport->shortcut().toString());
+    settings.setValue("Shortcut_ExportAll", ActionExportAll->shortcut().toString());
+    settings.setValue("Shortcut_Resize", ActionResize->shortcut().toString());
+}
+
+void MainWindow::RequestHotkeySettings()
+{
+    QList<QAction*> editActions = {
+        ActionAdd, ActionRename, ActionReplace, ActionDelete,
+        ActionExport, ActionExportAll, ActionResize
+    };
+    
+    HotkeyDialog dialog(editActions, this);
+    if (dialog.exec() == QDialog::Accepted)
+    {
+        auto newShortcuts = dialog.getNewShortcuts();
+        for (auto it = newShortcuts.begin(); it != newShortcuts.end(); ++it)
+        {
+            it.key()->setShortcut(it.value());
+        }
+    }
+}
+
