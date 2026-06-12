@@ -12,6 +12,7 @@
 #include <QPixmap>
 #include <QScrollArea>
 #include <QVBoxLayout>
+#include <QHBoxLayout>
 #include <QWheelEvent>
 #include <QMimeData>
 #include <QFileInfo>
@@ -69,6 +70,7 @@ void MainWindow::SetupUi()
 
     TextureList = new QListWidget(this);
     TextureList->setAlternatingRowColors(true);
+    TextureList->setSelectionMode(QAbstractItemView::ExtendedSelection);
     TextureList->setDragDropMode(QAbstractItemView::InternalMove);
     connect(TextureList->model(), &QAbstractItemModel::rowsMoved, this, &MainWindow::OnTextureMoved);
     connect(TextureList, &QListWidget::currentRowChanged, this, &MainWindow::OnTextureSelected);
@@ -94,7 +96,18 @@ void MainWindow::SetupUi()
 
     StatusLabel = new QLabel("No file loaded", this);
     StatusLabel->setMargin(5);
-    layout->addWidget(StatusLabel, 0);
+    
+    QHBoxLayout* bottomLayout = new QHBoxLayout();
+    bottomLayout->setContentsMargins(0, 0, 0, 0);
+    bottomLayout->addWidget(StatusLabel, 1);
+    
+    ArchiveSizeLabel = new QLabel(this);
+    ArchiveSizeLabel->setMargin(5);
+    ArchiveSizeLabel->setAlignment(Qt::AlignRight | Qt::AlignVCenter);
+    ArchiveSizeLabel->setStyleSheet("font-size: 11px; color: gray;");
+    bottomLayout->addWidget(ArchiveSizeLabel, 0);
+    
+    layout->addLayout(bottomLayout, 0);
 
     splitter->addWidget(rightWidget);
     splitter->setSizes({260, 840});
@@ -103,6 +116,10 @@ void MainWindow::SetupUi()
 void MainWindow::SetupMenus()
 {
     MenuFile = menuBar()->addMenu("File");
+
+    ActionNew = MenuFile->addAction("New");
+    ActionNew->setShortcut(QKeySequence::New);
+    connect(ActionNew, &QAction::triggered, this, &MainWindow::RequestNewDialog);
 
     ActionOpen = MenuFile->addAction("Open");
     ActionOpen->setShortcut(QKeySequence::Open);
@@ -206,6 +223,7 @@ void MainWindow::RetranslateUi()
     if (CurrentLanguage == Language::English)
     {
         MenuFile->setTitle("File");
+        ActionNew->setText("New");
         ActionOpen->setText("Open");
         ActionSave->setText("Save");
         ActionSaveAs->setText("Save As");
@@ -237,6 +255,7 @@ void MainWindow::RetranslateUi()
     else
     {
         MenuFile->setTitle("Файл");
+        ActionNew->setText("Создать");
         ActionOpen->setText("Открыть");
         ActionSave->setText("Сохранить");
         ActionSaveAs->setText("Сохранить как");
@@ -265,6 +284,8 @@ void MainWindow::RetranslateUi()
         if (StatusLabel->text() == "No file loaded")
             StatusLabel->setText("Файл не загружен");
     }
+    
+    UpdateArchiveSizeLabel();
 }
 
 void MainWindow::ApplyTheme()
@@ -363,6 +384,11 @@ bool MainWindow::HasSelection() const
 
 void MainWindow::UpdateTextureList()
 {
+    QList<int> selectedRows;
+    for (auto item : TextureList->selectedItems()) {
+        selectedRows.append(TextureList->row(item));
+    }
+
     TextureList->blockSignals(true);
     TextureList->clear();
     const auto& Textures = Dictionary.Textures();
@@ -373,14 +399,23 @@ void MainWindow::UpdateTextureList()
             Label += " *";
         TextureList->addItem(QString::fromStdString(Label));
     }
-    if (!Textures.empty() && SelectedIndex >= 0 && static_cast<std::size_t>(SelectedIndex) < Textures.size())
+    
+    if (!Textures.empty())
     {
-        TextureList->setCurrentRow(SelectedIndex);
-    }
-    else if (!Textures.empty())
-    {
-        TextureList->setCurrentRow(0);
-        SelectedIndex = 0;
+        if (SelectedIndex < 0 || static_cast<std::size_t>(SelectedIndex) >= Textures.size()) {
+            SelectedIndex = 0;
+        }
+        
+        if (selectedRows.isEmpty()) {
+            TextureList->setCurrentRow(SelectedIndex);
+        } else {
+            for (int r : selectedRows) {
+                if (r >= 0 && r < TextureList->count()) {
+                    TextureList->item(r)->setSelected(true);
+                }
+            }
+            TextureList->setCurrentItem(TextureList->item(SelectedIndex));
+        }
     }
     else
     {
@@ -389,6 +424,7 @@ void MainWindow::UpdateTextureList()
     }
     TextureList->blockSignals(false);
     OnSearchTextChanged(SearchBar->text());
+    UpdateArchiveSizeLabel();
 }
 
 void MainWindow::OnTextureSelected(int Index)
@@ -462,6 +498,23 @@ void MainWindow::UpdatePreview()
     PreviewLabel->setPixmap(pixmap);
 }
 
+void MainWindow::UpdateArchiveSizeLabel()
+{
+    if (!Dictionary.IsLoaded()) {
+        ArchiveSizeLabel->clear();
+        return;
+    }
+    
+    long long size = CalculateVramUsage() + Dictionary.Textures().size() * 150 + 80;
+    QString sizeText = QString::number(size / 1024) + " KB";
+    if (size > 1024 * 1024) sizeText = QString::number(size / (1024 * 1024.0), 'f', 2) + " MB";
+    
+    if (CurrentLanguage == Language::English)
+        ArchiveSizeLabel->setText("Estimated output size: " + sizeText);
+    else
+        ArchiveSizeLabel->setText("Ожидаемый размер файла: " + sizeText);
+}
+
 void MainWindow::wheelEvent(QWheelEvent* event)
 {
     if (!HasSelection()) return;
@@ -478,6 +531,16 @@ void MainWindow::wheelEvent(QWheelEvent* event)
     }
 }
 
+void MainWindow::RequestNewDialog()
+{
+    Dictionary.CreateEmpty();
+    DeleteUndoStack.clear();
+    SelectedIndex = -1;
+    StatusLabel->setText("New file created.");
+    UpdateTextureList();
+    UpdatePreview();
+}
+
 void MainWindow::RequestOpenDialog()
 {
     QString path = QFileDialog::getOpenFileName(this, "Open Texture Dictionary", "", "RenderWare TXD (*.txd)");
@@ -487,21 +550,40 @@ void MainWindow::RequestOpenDialog()
 
 void MainWindow::RequestExportDialog()
 {
-    if (!HasSelection()) return;
+    auto items = TextureList->selectedItems();
+    if (items.isEmpty()) return;
 
-    const auto& Item = Dictionary.Textures()[SelectedIndex];
-    QString Suggested = QString::fromStdString(Item.Name().empty() ? "texture.png" : Item.Name() + ".png");
+    if (items.size() == 1) {
+        const auto& Item = Dictionary.Textures()[TextureList->row(items.first())];
+        QString Suggested = QString::fromStdString(Item.Name().empty() ? "texture.png" : Item.Name() + ".png");
 
-    QString path = QFileDialog::getSaveFileName(this, "Export Texture", Suggested, "PNG image (*.png)");
-    if (path.isEmpty()) return;
+        QString path = QFileDialog::getSaveFileName(this, "Export Texture", Suggested, "PNG image (*.png)");
+        if (path.isEmpty()) return;
 
-    if (!path.endsWith(".png", Qt::CaseInsensitive))
-        path += ".png";
+        if (!path.endsWith(".png", Qt::CaseInsensitive))
+            path += ".png";
 
-    if (RenderWare::ImageWriter::SavePng(path.toStdString(), Item.Pixels()))
-        StatusLabel->setText("Exported: " + path);
-    else
-        StatusLabel->setText("Export failed: " + path);
+        if (RenderWare::ImageWriter::SavePng(path.toStdString(), Item.Pixels()))
+            StatusLabel->setText("Exported: " + path);
+        else
+            StatusLabel->setText("Export failed: " + path);
+    } else {
+        QString dir = QFileDialog::getExistingDirectory(this, "Select Export Folder for Selected");
+        if (dir.isEmpty()) return;
+
+        int success = 0, failed = 0;
+        for (auto item : items) {
+            const auto& Item = Dictionary.Textures()[TextureList->row(item)];
+            QString name = QString::fromStdString(Item.Name().empty() ? "unnamed" : Item.Name());
+            QString path = dir + "/" + name + ".png";
+
+            if (RenderWare::ImageWriter::SavePng(path.toStdString(), Item.Pixels())) success++;
+            else failed++;
+        }
+        QString msg = QString("Exported %1 selected texture(s).").arg(success);
+        if (failed > 0) msg += QString(" Failed: %1.").arg(failed);
+        StatusLabel->setText(msg);
+    }
 }
 
 void MainWindow::RequestExportAllDialog()
@@ -583,19 +665,30 @@ void MainWindow::ApplyAddition(const std::string& ImagePath)
 
 void MainWindow::RequestDeleteSelected()
 {
-    if (!HasSelection()) return;
+    auto selectedItems = TextureList->selectedItems();
+    if (selectedItems.isEmpty()) return;
     
-    RenderWare::Texture deletedItem = Dictionary.Textures()[SelectedIndex];
-    DeleteUndoStack.push_back({SelectedIndex, deletedItem});
+    QList<int> indices;
+    for (auto item : selectedItems) indices.append(TextureList->row(item));
+    std::sort(indices.begin(), indices.end(), std::greater<int>());
     
-    if (Dictionary.RemoveTexture(SelectedIndex))
-    {
+    int deletedCount = 0;
+    for (int i : indices) {
+        RenderWare::Texture deletedItem = Dictionary.Textures()[i];
+        DeleteUndoStack.push_back({i, deletedItem});
+        
+        if (Dictionary.RemoveTexture(i)) {
+            deletedCount++;
+        }
+    }
+    
+    if (deletedCount > 0) {
         if (SelectedIndex < 0 || static_cast<std::size_t>(SelectedIndex) >= Dictionary.Textures().size())
             SelectedIndex = Dictionary.Textures().size() - 1;
             
         UpdateTextureList();
         UpdatePreview();
-        StatusLabel->setText("Deleted texture.");
+        StatusLabel->setText(QString("Deleted %1 texture(s).").arg(deletedCount));
     }
 }
 
@@ -683,49 +776,71 @@ void MainWindow::SaveCurrent()
 
 void MainWindow::RequestResize()
 {
-    if (!HasSelection()) return;
+    auto items = TextureList->selectedItems();
+    if (items.isEmpty()) return;
 
-    const auto& Item = Dictionary.Textures()[SelectedIndex];
+    int firstIndex = TextureList->row(items.first());
+    const auto& Item = Dictionary.Textures()[firstIndex];
     bool ok;
-    int width = QInputDialog::getInt(this, "Resize Texture", "Width:", Item.Width(), 1, 4096, 1, &ok);
+    int width = QInputDialog::getInt(this, "Resize Texture(s)", "Width:", Item.Width(), 1, 4096, 1, &ok);
     if (!ok) return;
-    int height = QInputDialog::getInt(this, "Resize Texture", "Height:", Item.Height(), 1, 4096, 1, &ok);
+    int height = QInputDialog::getInt(this, "Resize Texture(s)", "Height:", Item.Height(), 1, 4096, 1, &ok);
     if (!ok) return;
 
     int FinalWidth = NearestPowerOfTwo(width);
     int FinalHeight = NearestPowerOfTwo(height);
-    Dictionary.ResizeTexture(SelectedIndex, FinalWidth, FinalHeight);
+    
+    for (auto item : items) {
+        Dictionary.ResizeTexture(TextureList->row(item), FinalWidth, FinalHeight);
+    }
+    
     UpdatePreview();
     UpdateTextureList();
-    StatusLabel->setText(QString::fromStdString("Resized to " + std::to_string(FinalWidth) + " x " + std::to_string(FinalHeight)));
+    StatusLabel->setText(QString("Resized %1 texture(s) to %2 x %3").arg(items.size()).arg(FinalWidth).arg(FinalHeight));
 }
 
-void MainWindow::SetCompressionDxt1() { if (HasSelection()) Dictionary.SetTextureCompression(SelectedIndex, CompressionType::Dxt1); }
-void MainWindow::SetCompressionDxt3() { if (HasSelection()) Dictionary.SetTextureCompression(SelectedIndex, CompressionType::Dxt3); }
-void MainWindow::SetCompressionDxt5() { if (HasSelection()) Dictionary.SetTextureCompression(SelectedIndex, CompressionType::Dxt5); }
-void MainWindow::SetCompressionNone() { if (HasSelection()) Dictionary.SetTextureCompression(SelectedIndex, CompressionType::None); }
+void MainWindow::SetCompressionDxt1() { 
+    auto items = TextureList->selectedItems();
+    for (auto item : items) Dictionary.SetTextureCompression(TextureList->row(item), CompressionType::Dxt1);
+    if (!items.isEmpty()) { UpdatePreview(); UpdateTextureList(); StatusLabel->setText(QString("Set DXT1 to %1 texture(s)").arg(items.size())); }
+}
+void MainWindow::SetCompressionDxt3() { 
+    auto items = TextureList->selectedItems();
+    for (auto item : items) Dictionary.SetTextureCompression(TextureList->row(item), CompressionType::Dxt3);
+    if (!items.isEmpty()) { UpdatePreview(); UpdateTextureList(); StatusLabel->setText(QString("Set DXT3 to %1 texture(s)").arg(items.size())); }
+}
+void MainWindow::SetCompressionDxt5() { 
+    auto items = TextureList->selectedItems();
+    for (auto item : items) Dictionary.SetTextureCompression(TextureList->row(item), CompressionType::Dxt5);
+    if (!items.isEmpty()) { UpdatePreview(); UpdateTextureList(); StatusLabel->setText(QString("Set DXT5 to %1 texture(s)").arg(items.size())); }
+}
+void MainWindow::SetCompressionNone() { 
+    auto items = TextureList->selectedItems();
+    for (auto item : items) Dictionary.SetTextureCompression(TextureList->row(item), CompressionType::None);
+    if (!items.isEmpty()) { UpdatePreview(); UpdateTextureList(); StatusLabel->setText(QString("Set RGBA8888 to %1 texture(s)").arg(items.size())); }
+}
 
 void MainWindow::CreateMipLevels()
 {
-    if (!HasSelection())
-        return;
-    if (Dictionary.SetTextureMipmaps(SelectedIndex, true))
-    {
-        UpdatePreview();
-        UpdateTextureList();
-        StatusLabel->setText(QString("Generated %1 mip levels").arg(Dictionary.Textures()[SelectedIndex].MipLevels()));
+    auto items = TextureList->selectedItems();
+    int count = 0;
+    for (auto item : items) {
+        if (Dictionary.SetTextureMipmaps(TextureList->row(item), true)) count++;
+    }
+    if (count > 0) {
+        UpdatePreview(); UpdateTextureList(); StatusLabel->setText(QString("Generated mip levels for %1 texture(s)").arg(count));
     }
 }
 
 void MainWindow::ClearMipLevels()
 {
-    if (!HasSelection())
-        return;
-    if (Dictionary.SetTextureMipmaps(SelectedIndex, false))
-    {
-        UpdatePreview();
-        UpdateTextureList();
-        StatusLabel->setText("Cleared mip levels");
+    auto items = TextureList->selectedItems();
+    int count = 0;
+    for (auto item : items) {
+        if (Dictionary.SetTextureMipmaps(TextureList->row(item), false)) count++;
+    }
+    if (count > 0) {
+        UpdatePreview(); UpdateTextureList(); StatusLabel->setText(QString("Cleared mip levels for %1 texture(s)").arg(count));
     }
 }
 
@@ -755,6 +870,28 @@ void MainWindow::RequestRename()
         UpdatePreview();
         StatusLabel->setText("Renamed to " + Name);
     }
+}
+
+long long MainWindow::CalculateVramUsage() const
+{
+    long long total = 0;
+    for (const auto& tex : Dictionary.Textures())
+    {
+        RenderWare::CompressionType comp = tex.IsEdited() ? tex.EditCompression : tex.SourceCompression;
+        int w = tex.Width();
+        int h = tex.Height();
+        int mips = tex.MipLevels();
+        if (mips < 1) mips = 1;
+        for (int i = 0; i < mips; ++i)
+        {
+            if (comp == RenderWare::CompressionType::Dxt1) total += std::max(8LL, (long long)(w * h / 2));
+            else if (comp == RenderWare::CompressionType::Dxt3 || comp == RenderWare::CompressionType::Dxt5) total += std::max(16LL, (long long)(w * h));
+            else total += (long long)(w * h * 4);
+            w = std::max(1, w / 2);
+            h = std::max(1, h / 2);
+        }
+    }
+    return total;
 }
 
 void MainWindow::LoadSettings()

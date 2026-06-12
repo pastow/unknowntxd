@@ -23,6 +23,7 @@ public:
     void OpenFile(const std::string& Path);
 
 private slots:
+    void RequestNewDialog();
     void RequestOpenDialog();
     void RequestExportDialog();
     void RequestExportAllDialog();
@@ -65,10 +66,12 @@ private:
     void SaveSettings();
     void UpdateTextureList();
     void UpdatePreview();
+    void UpdateArchiveSizeLabel();
     void ApplyReplacement(const std::string& ImagePath);
     void ApplyAddition(const std::string& ImagePath);
     void ApplyTheme();
     bool HasSelection() const;
+    long long CalculateVramUsage() const;
 
     RenderWare::TextureDictionary Dictionary;
     int SelectedIndex = -1;
@@ -85,9 +88,11 @@ private:
     QLabel* PreviewLabel;
     QLabel* InfoLabel;
     QLabel* StatusLabel;
+    QLabel* ArchiveSizeLabel;
     float PreviewZoom = 1.0f;
 
     QMenu* MenuFile;
+    QAction* ActionNew;
     QAction* ActionOpen;
     QAction* ActionSave;
     QAction* ActionSaveAs;

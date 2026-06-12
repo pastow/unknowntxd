@@ -17,6 +17,7 @@ find_package(Qt6 REQUIRED COMPONENTS Core Gui Widgets)
 find_package(Threads REQUIRED)
 
 add_executable(UnknownTxd
+    resources.qrc
     Source/Main.cpp
     Source/Core/BinaryReader.cpp
     Source/Core/BinaryWriter.cpp

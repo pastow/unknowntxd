@@ -12,6 +12,16 @@
 
 namespace RenderWare
 {
+    void TextureDictionary::CreateEmpty()
+    {
+        LoadedTextures.clear();
+        FilePath = "";
+        FileVersion = 0x1803FFFF;
+        DeviceId = 0;
+        Loaded = true;
+        Modified = true;
+    }
+
     namespace
     {
         int NearestPowerOfTwo(int Value)
