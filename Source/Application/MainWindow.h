@@ -6,6 +6,7 @@
 #include <QSplitter>
 #include <QDragEnterEvent>
 #include <QDropEvent>
+#include <QCloseEvent>
 #include <QLineEdit>
 #include <QModelIndex>
 #include <string>
@@ -35,6 +36,7 @@ private slots:
     void OnTextureSelected(int Index);
     void RequestResize();
     void ToggleTheme();
+    void RequestHotkeySettings();
     
     void SetCompressionDxt1();
     void SetCompressionDxt3();
@@ -54,10 +56,13 @@ protected:
     void wheelEvent(QWheelEvent* event) override;
     void dragEnterEvent(QDragEnterEvent* event) override;
     void dropEvent(QDropEvent* event) override;
+    void closeEvent(QCloseEvent* event) override;
 
 private:
     void SetupUi();
     void SetupMenus();
+    void LoadSettings();
+    void SaveSettings();
     void UpdateTextureList();
     void UpdatePreview();
     void ApplyReplacement(const std::string& ImagePath);
@@ -107,6 +112,7 @@ private:
     
     QMenu* MenuView;
     QAction* ActionTheme;
+    QAction* ActionHotkeySettings;
     QMenu* MenuLang;
     QAction* ActionLangEn;
     QAction* ActionLangRu;

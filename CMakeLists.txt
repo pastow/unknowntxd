@@ -30,6 +30,7 @@ add_executable(UnknownTxd
     Source/RenderWare/ImageOps.cpp
     Source/RenderWare/StbImpl.cpp
     Source/Application/MainWindow.cpp
+    Source/Application/HotkeyDialog.cpp
 )
 target_include_directories(UnknownTxd PRIVATE ${CMAKE_SOURCE_DIR}/Source ${CMAKE_SOURCE_DIR}/External/stb)
 target_link_libraries(UnknownTxd PRIVATE Qt6::Core Qt6::Gui Qt6::Widgets Threads::Threads)
