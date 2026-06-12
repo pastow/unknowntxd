@@ -12,6 +12,7 @@
 #include <QPixmap>
 #include <QScrollArea>
 #include <QVBoxLayout>
+#include <QHBoxLayout>
 #include <QWheelEvent>
 #include <QMimeData>
 #include <QFileInfo>
@@ -95,7 +96,18 @@ void MainWindow::SetupUi()
 
     StatusLabel = new QLabel("No file loaded", this);
     StatusLabel->setMargin(5);
-    layout->addWidget(StatusLabel, 0);
+    
+    QHBoxLayout* bottomLayout = new QHBoxLayout();
+    bottomLayout->setContentsMargins(0, 0, 0, 0);
+    bottomLayout->addWidget(StatusLabel, 1);
+    
+    ArchiveSizeLabel = new QLabel(this);
+    ArchiveSizeLabel->setMargin(5);
+    ArchiveSizeLabel->setAlignment(Qt::AlignRight | Qt::AlignVCenter);
+    ArchiveSizeLabel->setStyleSheet("font-size: 11px; color: gray;");
+    bottomLayout->addWidget(ArchiveSizeLabel, 0);
+    
+    layout->addLayout(bottomLayout, 0);
 
     splitter->addWidget(rightWidget);
     splitter->setSizes({260, 840});
@@ -104,6 +116,10 @@ void MainWindow::SetupUi()
 void MainWindow::SetupMenus()
 {
     MenuFile = menuBar()->addMenu("File");
+
+    ActionNew = MenuFile->addAction("New");
+    ActionNew->setShortcut(QKeySequence::New);
+    connect(ActionNew, &QAction::triggered, this, &MainWindow::RequestNewDialog);
 
     ActionOpen = MenuFile->addAction("Open");
     ActionOpen->setShortcut(QKeySequence::Open);
@@ -207,6 +223,7 @@ void MainWindow::RetranslateUi()
     if (CurrentLanguage == Language::English)
     {
         MenuFile->setTitle("File");
+        ActionNew->setText("New");
         ActionOpen->setText("Open");
         ActionSave->setText("Save");
         ActionSaveAs->setText("Save As");
@@ -238,6 +255,7 @@ void MainWindow::RetranslateUi()
     else
     {
         MenuFile->setTitle("Файл");
+        ActionNew->setText("Создать");
         ActionOpen->setText("Открыть");
         ActionSave->setText("Сохранить");
         ActionSaveAs->setText("Сохранить как");
@@ -266,6 +284,8 @@ void MainWindow::RetranslateUi()
         if (StatusLabel->text() == "No file loaded")
             StatusLabel->setText("Файл не загружен");
     }
+    
+    UpdateArchiveSizeLabel();
 }
 
 void MainWindow::ApplyTheme()
@@ -404,6 +424,7 @@ void MainWindow::UpdateTextureList()
     }
     TextureList->blockSignals(false);
     OnSearchTextChanged(SearchBar->text());
+    UpdateArchiveSizeLabel();
 }
 
 void MainWindow::OnTextureSelected(int Index)
@@ -477,6 +498,23 @@ void MainWindow::UpdatePreview()
     PreviewLabel->setPixmap(pixmap);
 }
 
+void MainWindow::UpdateArchiveSizeLabel()
+{
+    if (!Dictionary.IsLoaded()) {
+        ArchiveSizeLabel->clear();
+        return;
+    }
+    
+    long long size = CalculateVramUsage() + Dictionary.Textures().size() * 150 + 80;
+    QString sizeText = QString::number(size / 1024) + " KB";
+    if (size > 1024 * 1024) sizeText = QString::number(size / (1024 * 1024.0), 'f', 2) + " MB";
+    
+    if (CurrentLanguage == Language::English)
+        ArchiveSizeLabel->setText("Estimated output size: " + sizeText);
+    else
+        ArchiveSizeLabel->setText("Ожидаемый размер файла: " + sizeText);
+}
+
 void MainWindow::wheelEvent(QWheelEvent* event)
 {
     if (!HasSelection()) return;
@@ -491,6 +529,16 @@ void MainWindow::wheelEvent(QWheelEvent* event)
             PreviewZoom = 32.0f;
         UpdatePreview();
     }
+}
+
+void MainWindow::RequestNewDialog()
+{
+    Dictionary.CreateEmpty();
+    DeleteUndoStack.clear();
+    SelectedIndex = -1;
+    StatusLabel->setText("New file created.");
+    UpdateTextureList();
+    UpdatePreview();
 }
 
 void MainWindow::RequestOpenDialog()
@@ -822,6 +870,28 @@ void MainWindow::RequestRename()
         UpdatePreview();
         StatusLabel->setText("Renamed to " + Name);
     }
+}
+
+long long MainWindow::CalculateVramUsage() const
+{
+    long long total = 0;
+    for (const auto& tex : Dictionary.Textures())
+    {
+        RenderWare::CompressionType comp = tex.IsEdited() ? tex.EditCompression : tex.SourceCompression;
+        int w = tex.Width();
+        int h = tex.Height();
+        int mips = tex.MipLevels();
+        if (mips < 1) mips = 1;
+        for (int i = 0; i < mips; ++i)
+        {
+            if (comp == RenderWare::CompressionType::Dxt1) total += std::max(8LL, (long long)(w * h / 2));
+            else if (comp == RenderWare::CompressionType::Dxt3 || comp == RenderWare::CompressionType::Dxt5) total += std::max(16LL, (long long)(w * h));
+            else total += (long long)(w * h * 4);
+            w = std::max(1, w / 2);
+            h = std::max(1, h / 2);
+        }
+    }
+    return total;
 }
 
 void MainWindow::LoadSettings()

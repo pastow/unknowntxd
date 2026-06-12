@@ -14,6 +14,7 @@ namespace RenderWare
     class TextureDictionary
     {
     public:
+        void CreateEmpty();
         bool LoadFromFile(const std::string& Path, std::string& OutError);
         bool SaveToFile(const std::string& Path, std::string& OutError);
 
